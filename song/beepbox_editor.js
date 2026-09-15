@@ -30715,6 +30715,7 @@ li.select2-results__option[role=group] > strong:hover {
             this.soundFontKeyScratch = [];
             this.soundFontPinScratch = { interval: 0.0, size: 0.0 };
             this.soundFontVelocityScratch = [];
+            this.soundFontChordScratch = [];
             this.computeDelayBufferSizes();
             if (song != null)
                 this.setSong(song);
@@ -31416,8 +31417,8 @@ li.select2-results__option[role=group] > strong:hover {
             const keys = this.soundFontKeyScratch;
             const velocities = this.soundFontVelocityScratch;
             let count = 0;
-            count = this.collectSoundFontKeys(instrumentState.activeTones, basePitch, keys, velocities, count);
-            count = this.collectSoundFontKeys(instrumentState.liveInputTones, basePitch, keys, velocities, count);
+            count = this.collectSoundFontKeys(instrumentState.activeTones, basePitch, instrument, instrumentState, keys, velocities, count);
+            count = this.collectSoundFontKeys(instrumentState.liveInputTones, basePitch, instrument, instrumentState, keys, velocities, count);
             const engine = this.soundFontEngine;
             engine.updateSoundingKeys(channelIndex, instrumentIndex, keys, velocities, count);
             const pins = this.soundFontPinScratch;
@@ -31438,12 +31439,30 @@ li.select2-results__option[role=group] > strong:hover {
                 engine.setExpressionGain(channelIndex, instrumentIndex, Synth.noteSizeToVolumeMult(size));
             }
         }
-        collectSoundFontKeys(toneList, basePitch, keys, velocities, count) {
+        selectChordPitchIndices(tone, instrument, instrumentState, out) {
+            const chord = instrument.getChord();
+            if (tone.pitchCount <= 1 || (!chord.arpeggiates && !chord.customInterval)) {
+                for (let j = 0; j < tone.pitchCount; j++)
+                    out[j] = j;
+                return tone.pitchCount;
+            }
+            const arpeggio = Math.floor(instrumentState.arpTime / Config.ticksPerArpeggio);
+            if (chord.arpeggiates) {
+                out[0] = getArpeggioPitchIndex(tone.pitchCount, instrument.fastTwoNoteArp, arpeggio);
+                return 1;
+            }
+            out[0] = 0;
+            out[1] = 1 + getArpeggioPitchIndex(tone.pitchCount - 1, instrument.fastTwoNoteArp, arpeggio);
+            return 2;
+        }
+        collectSoundFontKeys(toneList, basePitch, instrument, instrumentState, keys, velocities, count) {
+            const chordPitches = this.soundFontChordScratch;
             for (let i = 0; i < toneList.count(); i++) {
                 const tone = toneList.get(i);
                 const velocity = Synth.velocityFromTone(tone);
-                for (let j = 0; j < tone.pitchCount; j++) {
-                    const key = basePitch + tone.pitches[j];
+                const selected = this.selectChordPitchIndices(tone, instrument, instrumentState, chordPitches);
+                for (let j = 0; j < selected; j++) {
+                    const key = basePitch + tone.pitches[chordPitches[j]];
                     let duplicate = false;
                     for (let k = 0; k < count; k++) {
                         if (keys[k] == key) {
